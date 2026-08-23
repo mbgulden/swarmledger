@@ -5,7 +5,7 @@ Validates Merkle node integrity, RFC 8785 hashes, and Topological Genesis Depth.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from swarmledger.core.hasher import MerkleHasher
@@ -26,8 +26,13 @@ class MaliciousForkError(Exception):
 @dataclass
 class AuditViolation:
     node_id: str
-    violation_type: str
+    error_type: str
     details: str
+    violation_type: str = ""
+
+    def __post_init__(self):
+        if not self.violation_type:
+            self.violation_type = self.error_type
 
 
 @dataclass
@@ -63,7 +68,7 @@ class CryptographicAuditor:
             if not MerkleHasher.verify_node_integrity(n, parent_hashes=p_hashes):
                 violations.append(AuditViolation(
                     node_id=n.node_id,
-                    violation_type="TAMPER_MISMATCH",
+                    error_type="TamperMismatchError",
                     details=f"RFC 8785 hash mismatch on {n.event_type.value}"
                 ))
 
@@ -79,7 +84,7 @@ class CryptographicAuditor:
             if n.lamport_seq != expected_seq:
                 violations.append(AuditViolation(
                     node_id=n.node_id,
-                    violation_type="POISONED_LAMPORT_CHAIN",
+                    error_type="PoisonedLamportChainError",
                     details=f"Claimed sequence {n.lamport_seq} != topological depth {expected_seq} from Genesis."
                 ))
 
