@@ -69,7 +69,8 @@ class CryptographicAuditor:
                 violations.append(AuditViolation(
                     node_id=n.node_id,
                     error_type="TamperMismatchError",
-                    details=f"RFC 8785 hash mismatch on {n.event_type.value}"
+                    details=f"RFC 8785 hash mismatch on {n.event_type.value}",
+                    violation_type="TAMPER_MISMATCH"
                 ))
 
             # 2. Genesis Topological Depth Invariant check
@@ -85,7 +86,8 @@ class CryptographicAuditor:
                 violations.append(AuditViolation(
                     node_id=n.node_id,
                     error_type="PoisonedLamportChainError",
-                    details=f"Claimed sequence {n.lamport_seq} != topological depth {expected_seq} from Genesis."
+                    details=f"Claimed sequence {n.lamport_seq} != topological depth {expected_seq} from Genesis.",
+                    violation_type="POISONED_LAMPORT_CHAIN"
                 ))
 
         passed = len(violations) == 0
