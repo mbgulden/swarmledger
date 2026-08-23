@@ -1,0 +1,2 @@
+[console_scripts]
+swarmledger = swarmledger.cli:main

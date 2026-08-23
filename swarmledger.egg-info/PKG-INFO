@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: swarmledger
+Version: 0.1.0
+Summary: Cryptographic Merkle DAG & Causal Provenance Ledger for Multi-Agent Swarms
+Author: Michael Gulden
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+
+# SwarmLedger: Cryptographic Merkle DAG & Causal Provenance Ledger
+
+SwarmLedger is Stage 5 of the Swarm Suite Agent Hypervisor stack. It provides tamper-evident write-ahead Merkle DAG state, RFC 8785 canonical serialization, causal Lamport clocks, and attention distillation across all hypervisor primitives.
