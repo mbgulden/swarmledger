@@ -1,38 +1,46 @@
 """
-Cryptographic Merkle DAG Auditor for SwarmLedger.
-Performs zero-trust verification of DAG nodes, hashes, parent lineages, and payload integrity.
+Zero-Trust Cryptographic Auditor for SwarmLedger.
+Validates Merkle node integrity, RFC 8785 hashes, and Topological Genesis Depth.
 """
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from swarmledger.core.hasher import MerkleHasher
 from swarmledger.core.node import LedgerNode
 from swarmledger.storage.engine import StorageEngine
 
 
+class TamperMismatchError(Exception):
+    """Raised when a Merkle node hash does not match computed RFC 8785 payload."""
+    pass
+
+
+class MaliciousForkError(Exception):
+    """Raised when a node attempts to forge sequence numbers detached from Genesis depth."""
+    pass
+
+
 @dataclass
 class AuditViolation:
     node_id: str
-    error_type: str
-    expected_hash: str
-    actual_hash: str
-    message: str
+    violation_type: str
+    details: str
 
 
 @dataclass
 class AuditReport:
-    verified_nodes: int
+    span_id: str
     passed: bool
+    verified_nodes: int
     violations: List[AuditViolation]
 
 
 class CryptographicAuditor:
     """
-    Audits the append-only Merkle DAG for cryptographic integrity and tamper detection.
+    Audits Merkle DAG spans for byte-level tamper evidence and Genesis depth invariance.
     """
 
     def __init__(self, engine: StorageEngine):
@@ -40,47 +48,40 @@ class CryptographicAuditor:
 
     def verify_span(self, span_id: str) -> AuditReport:
         nodes = self.engine.get_span_nodes(span_id)
+        if not nodes:
+            return AuditReport(span_id, True, 0, [])
+
         violations: List[AuditViolation] = []
-
         node_map: Dict[str, LedgerNode] = {n.node_id: n for n in nodes}
+        node_depths: Dict[str, int] = {}
 
-        for node in nodes:
-            # 1. Fetch parent hashes
-            parent_hashes = []
-            for p_id in node.parent_node_ids:
-                p_node = node_map.get(p_id) or self.engine.get_node(p_id)
-                if p_node:
-                    parent_hashes.append(p_node.node_hash or "")
-                else:
-                    violations.append(AuditViolation(
-                        node_id=node.node_id,
-                        error_type="MissingParentError",
-                        expected_hash="",
-                        actual_hash=node.node_hash or "",
-                        message=f"Parent node '{p_id}' not found in DAG"
-                    ))
+        for n in nodes:
+            # Look up parent hashes
+            p_hashes = [node_map[p_id].node_hash for p_id in n.parent_node_ids if p_id in node_map]
 
-            # 2. Re-compute hash
-            expected = MerkleHasher.compute_hash(node, parent_hashes)
-            if node.node_hash != expected:
+            # 1. Byte-level Merkle integrity check
+            if not MerkleHasher.verify_node_integrity(n, parent_hashes=p_hashes):
                 violations.append(AuditViolation(
-                    node_id=node.node_id,
-                    error_type="TamperMismatchError",
-                    expected_hash=expected,
-                    actual_hash=node.node_hash or "",
-                    message=f"Cryptographic hash mismatch for node '{node.node_id}'. Stored={node.node_hash}, Computed={expected}"
+                    node_id=n.node_id,
+                    violation_type="TAMPER_MISMATCH",
+                    details=f"RFC 8785 hash mismatch on {n.event_type.value}"
                 ))
 
-        return AuditReport(
-            verified_nodes=len(nodes),
-            passed=(len(violations) == 0),
-            violations=violations
-        )
+            # 2. Genesis Topological Depth Invariant check
+            if not n.parent_node_ids:
+                expected_seq = 1
+            else:
+                p_seqs = [node_depths.get(p_id, node_map[p_id].lamport_seq if p_id in node_map else 0) for p_id in n.parent_node_ids]
+                expected_seq = max(p_seqs) + 1 if p_seqs else 1
 
-    def audit_all(self) -> Dict[str, AuditReport]:
-        spans = self.engine.list_spans()
-        reports = {}
-        for s in spans:
-            span_id = s["span_id"]
-            reports[span_id] = self.verify_span(span_id)
-        return reports
+            node_depths[n.node_id] = expected_seq
+
+            if n.lamport_seq != expected_seq:
+                violations.append(AuditViolation(
+                    node_id=n.node_id,
+                    violation_type="POISONED_LAMPORT_CHAIN",
+                    details=f"Claimed sequence {n.lamport_seq} != topological depth {expected_seq} from Genesis."
+                ))
+
+        passed = len(violations) == 0
+        return AuditReport(span_id, passed, len(nodes), violations)

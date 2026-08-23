@@ -27,7 +27,8 @@ class MerkleHasher:
         Calculates Node Hash:
         SHA256(Sorted Parent Hashes || LamportSeq || EventType || AgentID || CanonicalPayloadBytes)
         """
-        parents_sorted = sorted(parent_hashes or [])
+        parents = parent_hashes if parent_hashes is not None else (node.parent_node_ids or [])
+        parents_sorted = sorted(parents)
         parents_chunk = ",".join(parents_sorted).encode("utf-8")
         seq_chunk = str(node.lamport_seq).encode("utf-8")
         event_chunk = node.event_type.value.encode("utf-8")
