@@ -20,10 +20,17 @@ classifiers = [
 [project.scripts]
 swarmledger = "swarmledger.cli:main"
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.16.9",
+    "build>=1.0.0",
+    "twine>=5.0.0",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-asyncio_mode = "auto"
 
 [project.urls]
 Homepage = "https://github.com/mbgulden/swarmledger"
