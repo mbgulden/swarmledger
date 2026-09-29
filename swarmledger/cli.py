@@ -8,11 +8,19 @@ import argparse
 import json
 import sys
 import time
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from swarmledger.distiller.visualizer import ANSIVisualizer
 from swarmledger.storage.auditor import CryptographicAuditor
 from swarmledger.storage.engine import StorageEngine
+
+
+def _package_version() -> str:
+    try:
+        return version("swarmledger")
+    except PackageNotFoundError:
+        return "unknown"
 
 
 def cmd_log(args: argparse.Namespace) -> int:
@@ -85,25 +93,26 @@ def cmd_audit(args: argparse.Namespace) -> int:
         else:
             print(f"  ❌ FAILED: {len(report.violations)} cryptographic violations detected!")
             for v in report.violations:
-                print(f"    - [{v.error_type}] Node {v.node_id}: {v.message}")
+                print(f"    - [{v.error_type}] Node {v.node_id}: {v.details}")
             return 1
     else:
         print("🔒 Auditing all spans in ledger...")
-        all_reports = auditor.audit_all()
-        if not all_reports:
+        spans = engine.list_spans()
+        if not spans:
             print("  (Empty ledger - zero spans to audit)")
             return 0
 
         failed = 0
         total_nodes = 0
-        for span_id, rep in all_reports.items():
+        for span in spans:
+            rep = auditor.verify_span(span["span_id"])
             total_nodes += rep.verified_nodes
             if not rep.passed:
                 failed += 1
-                print(f"  ❌ Span '{span_id}' corrupted ({len(rep.violations)} violations)")
+                print(f"  ❌ Span '{span['span_id']}' corrupted ({len(rep.violations)} violations)")
 
         if failed == 0:
-            print(f"  ✅ ALL SPANS PASSED: {len(all_reports)} spans ({total_nodes} nodes) cryptographically verified.")
+            print(f"  ✅ ALL SPANS PASSED: {len(spans)} spans ({total_nodes} nodes) cryptographically verified.")
             return 0
         else:
             print(f"  ❌ FAILED: {failed} corrupted span(s) found.")
@@ -114,6 +123,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         prog="swarmledger",
         description="SwarmLedger: Cryptographic Merkle DAG & Causal Provenance Ledger",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_package_version()}",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
